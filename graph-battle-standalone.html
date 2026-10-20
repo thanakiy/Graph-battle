@@ -1,0 +1,1182 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>สมรภูมิกราฟ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one column plotting sheet. Header strip, scoreboard, full-width graph board, then the instrument panel (equation input, keypad, examples) docked under the board. */
+:root {
+  --paper: #EDF0E8;
+  --panel: #E2E7DC;
+  --ink: #1A2830;
+  --ink-soft: #50636C;
+  --grid: #CBD5CB;
+  --grid-strong: #A3B3A9;
+  --blue: #1D4FA3;
+  --red: #BE3A2C;
+  --rock: #6B7A72;
+  --ok: #2B7A4B;
+  --bad: #B3261E;
+  --f-display: 'Bai Jamjuree', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-body: 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0F1A21;
+    --panel: #16252E;
+    --ink: #E3ECEF;
+    --ink-soft: #92A6AF;
+    --grid: #1E333E;
+    --grid-strong: #355262;
+    --blue: #6FB2FF;
+    --red: #FF8F74;
+    --rock: #7F928A;
+    --ok: #6FD39A;
+    --bad: #FF8A80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0F1A21;
+  --panel: #16252E;
+  --ink: #E3ECEF;
+  --ink-soft: #92A6AF;
+  --grid: #1E333E;
+  --grid-strong: #355262;
+  --blue: #6FB2FF;
+  --red: #FF8F74;
+  --rock: #7F928A;
+  --ok: #6FD39A;
+  --bad: #FF8A80;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { background: var(--paper); }
+body {
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 12px 28px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.app { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { min-width: 0; }
+.topbtns { display: flex; gap: 8px; flex: none; }
+.topbtns .btn { padding: 8px 10px; }
+.btn[aria-pressed="false"] { color: var(--ink-soft); border-style: dashed; }
+.brand h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 26px; line-height: 1.15; letter-spacing: 0.01em; }
+.brand p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+
+.btn {
+  font: inherit; font-weight: 600; color: var(--ink); background: transparent;
+  border: 1.5px solid var(--ink); border-radius: 4px; padding: 8px 14px; min-height: 40px; cursor: pointer;
+}
+.btn:hover { background: var(--panel); }
+.btn:focus-visible, .key:focus-visible, .chip:focus-visible, .seg button:focus-visible, #expr:focus-visible, summary:focus-visible {
+  outline: 3px solid var(--blue); outline-offset: 2px;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.solid { background: var(--ink); color: var(--paper); }
+.btn.solid:hover { opacity: 0.9; background: var(--ink); }
+
+.score { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.side { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
+.mark { width: 14px; height: 14px; flex: none; background: var(--blue); border-radius: 50%; }
+.s1 .mark { background: var(--red); border-radius: 2px; transform: rotate(45deg) scale(0.85); }
+.pips { display: inline-flex; gap: 4px; }
+.pip { width: 9px; height: 9px; border: 1.5px solid currentColor; border-radius: 50%; }
+.s0 .pip { color: var(--blue); } .s1 .pip { color: var(--red); border-radius: 2px; }
+.pip.on { background: currentColor; }
+.turn { flex-basis: 100%; order: 3; font-family: var(--f-mono); font-size: 13px; color: var(--ink-soft); }
+.turn b { color: var(--ink); font-family: var(--f-body); }
+
+.board { position: relative; border: 1.5px solid var(--ink); background: var(--paper); line-height: 0; }
+#cv { display: block; width: 100%; height: auto; touch-action: manipulation; }
+.overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; line-height: 1.4;
+  background: color-mix(in srgb, var(--paper) 74%, transparent); text-align: center; padding: 16px;
+}
+.overlay h2 { margin: 0; font-family: var(--f-display); font-size: 30px; }
+.overlay p { margin: 0; color: var(--ink-soft); }
+
+.msg { margin: 0; min-height: 3em; font-size: 14px; }
+.msg code, .eqshow { font-family: var(--f-mono); font-size: 13px; }
+
+.panel { background: var(--panel); border: 1.5px solid var(--grid-strong); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.shot { display: flex; gap: 8px; align-items: stretch; }
+.eq { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: var(--paper); border: 1.5px solid var(--ink); padding: 0 10px; }
+.eq span { font-family: var(--f-mono); color: var(--ink-soft); white-space: nowrap; }
+#expr { flex: 1; min-width: 0; font-family: var(--f-mono); font-size: 16px; color: var(--ink); background: transparent; border: 0; padding: 11px 0; }
+#expr:focus-visible { outline-offset: 6px; }
+.keys { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.key, .chip {
+  flex: none; font-family: var(--f-mono); font-size: 14px; color: var(--ink); background: var(--paper);
+  border: 1.5px solid var(--grid-strong); border-radius: 3px; min-width: 40px; min-height: 40px; padding: 0 10px; cursor: pointer;
+}
+.key:hover, .chip:hover { border-color: var(--ink); }
+.chip { min-height: 34px; font-size: 13px; }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.examples small { color: var(--ink-soft); }
+.err { margin: 0; min-height: 1.5em; font-size: 13px; color: var(--bad); }
+.err.ok { color: var(--ok); }
+
+details.box { border: 1.5px solid var(--grid-strong); padding: 0 12px; }
+details.box summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+details.box[open] summary { border-bottom: 1px solid var(--grid-strong); margin-bottom: 10px; }
+.opt { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.opt > span { font-size: 13px; color: var(--ink-soft); }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--paper); border: 1.5px solid var(--grid-strong);
+  border-radius: 3px; padding: 6px 12px; min-height: 38px; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.help p, .help li { margin: 0 0 8px; }
+.help ul { padding-left: 20px; margin: 0 0 8px; }
+.help code { font-family: var(--f-mono); font-size: 13px; background: var(--panel); padding: 1px 5px; }
+.help { padding-bottom: 6px; }
+@media (min-width: 640px) { .brand h1 { font-size: 32px; } .turn { order: 0; flex-basis: auto; } .score { flex-wrap: nowrap; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+.menu { display: flex; flex-direction: column; gap: 16px; padding: 14px 0 18px; }
+.opt { margin-bottom: 0; }
+.opt .lab { font-family: var(--f-display); font-weight: 700; font-size: 16px; color: var(--ink); }
+.opt.dim { opacity: 0.45; }
+.opt.dim .seg button { cursor: default; }
+.hint { margin: 0; font-size: 13px; color: var(--ink-soft); }
+.optrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+.seg.lv button { flex: 1 1 0; min-width: 72px; }
+.seg.maps { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.seg.maps button { display: flex; flex-direction: column; gap: 6px; padding: 6px; text-align: left; line-height: 1.3; height: auto; }
+.seg.maps b { font-weight: 600; font-size: 13px; }
+.seg.maps button[aria-pressed="true"] { background: var(--panel); color: var(--ink); border-color: var(--ink); outline: 2.5px solid var(--ink); outline-offset: -4px; }
+.thumb { width: 100%; height: auto; display: block; border: 1px solid var(--grid-strong); }
+.start { font-family: var(--f-display); font-size: 20px; letter-spacing: 0.04em; min-height: 52px; }
+.ovbtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.topbtns .btn { padding: 8px 10px; }
+@media (max-width: 420px) { .topbtns { gap: 6px; } .topbtns .btn { padding: 8px 8px; font-size: 13px; } }
+</style>
+
+</head>
+<body>
+<div class="app">
+
+  <div id="menuView">
+    <header class="top">
+      <div class="brand">
+        <h1>สมรภูมิกราฟ</h1>
+        <p>พิมพ์สมการ แล้วยิงเส้นกราฟใส่ฝ่ายตรงข้าม</p>
+      </div>
+      <div class="topbtns"><button class="btn soundBtn" type="button" aria-pressed="true">เสียง เปิด</button></div>
+    </header>
+
+    <div class="menu">
+      <div class="opt"><span class="lab">คู่ต่อสู้</span>
+        <div class="seg" data-key="opp"><button type="button" data-v="bot">เล่นกับบอท</button><button type="button" data-v="two">สองคนสลับกัน</button></div></div>
+
+      <div class="opt" id="levelOpt"><span class="lab">ระดับความยาก</span>
+        <div class="seg lv" data-key="level">
+          <button type="button" data-v="easy">ง่าย</button><button type="button" data-v="normal">ปานกลาง</button>
+          <button type="button" data-v="hard">ยาก</button><button type="button" data-v="expert">ยากมาก</button></div>
+        <p class="hint" id="diffHint"></p></div>
+
+      <div class="opt"><span class="lab">แมพ</span>
+        <div class="seg maps" data-key="map">
+          <button type="button" data-v="random"><canvas class="thumb" data-map="random" width="200" height="120" aria-hidden="true"></canvas><b>ทุ่งสุ่ม</b></button>
+          <button type="button" data-v="wall"><canvas class="thumb" data-map="wall" width="200" height="120" aria-hidden="true"></canvas><b>กำแพงกลางสนาม</b></button>
+          <button type="button" data-v="fort"><canvas class="thumb" data-map="fort" width="200" height="120" aria-hidden="true"></canvas><b>ป้อมสองฝั่ง</b></button>
+          <button type="button" data-v="scatter"><canvas class="thumb" data-map="scatter" width="200" height="120" aria-hidden="true"></canvas><b>ทุ่งหินเกลื่อน</b></button>
+          <button type="button" data-v="open"><canvas class="thumb" data-map="open" width="200" height="120" aria-hidden="true"></canvas><b>สนามโล่ง</b></button>
+        </div>
+        <p class="hint">หินถูกยิงแล้วจะเป็นหลุม กราฟลอดผ่านหลุมได้ แมพจึงเปลี่ยนไปตามที่ยิง</p></div>
+
+      <div class="optrow">
+        <div class="opt"><span class="lab">ทหารต่อทีม</span>
+          <div class="seg" data-key="count"><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button></div></div>
+        <div class="opt"><span class="lab">ชนิดสมการ</span>
+          <div class="seg" data-key="mode"><button type="button" data-v="fn">y = f(x)</button><button type="button" data-v="ode">y′ = f(x, y)</button></div></div>
+      </div>
+
+      <button class="btn solid start" id="startBtn" type="button">เริ่มเกม</button>
+    </div>
+
+    <details class="box">
+      <summary>วิธีเล่น</summary>
+      <div class="help" id="helpMenu"></div>
+    </details>
+  </div>
+
+  <div id="gameView" hidden>
+    <header class="top">
+      <div class="brand">
+        <h1>สมรภูมิกราฟ</h1>
+        <p id="gameInfo"></p>
+      </div>
+      <div class="topbtns">
+        <button class="btn" id="menuBtn" type="button">เมนู</button>
+        <button class="btn soundBtn" type="button" aria-pressed="true">เสียง เปิด</button>
+        <button class="btn" id="newBtn" type="button">เริ่มใหม่</button>
+      </div>
+    </header>
+
+    <section class="score" aria-label="สถานะเกม">
+      <div class="side s0"><span class="mark" aria-hidden="true"></span><span id="nm0">คุณ</span><span class="pips" id="pips0"></span></div>
+      <div class="side s1"><span id="nm1">บอท</span><span class="mark" aria-hidden="true"></span><span class="pips" id="pips1"></span></div>
+      <div class="turn" id="turnLabel" aria-live="polite"></div>
+    </section>
+
+    <div class="board" id="board">
+      <canvas id="cv" role="img" aria-label="สนามพิกัด แสดงทหาร สิ่งกีดขวาง และเส้นกราฟที่ยิง"></canvas>
+      <div class="overlay" id="overlay" hidden>
+        <h2 id="ovTitle"></h2>
+        <p id="ovText"></p>
+        <div class="ovbtns"><button class="btn solid" id="againBtn" type="button">เล่นอีกครั้ง</button><button class="btn" id="menuBtn2" type="button">กลับเมนู</button></div>
+      </div>
+    </div>
+
+    <p class="msg" id="msg" aria-live="polite"></p>
+
+    <section class="panel" aria-label="แผงยิง">
+      <form class="shot" id="shotForm" autocomplete="off">
+        <label class="eq" for="expr"><span id="eqPrefix">y =</span>
+          <input id="expr" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="เช่น 0.25*x" aria-describedby="err">
+        </label>
+        <button class="btn solid" id="fireBtn" type="submit">ยิง</button>
+      </form>
+      <div class="keys" id="keys" role="group" aria-label="ปุ่มลัดสัญลักษณ์"></div>
+      <div class="examples" id="examples"></div>
+      <p class="err" id="err" aria-live="polite"></p>
+    </section>
+
+    <details class="box">
+      <summary>วิธีเล่น</summary>
+      <div class="help" id="helpGame">
+        <p>ผลัดกันยิงทีละคน ทหารที่มีเส้นประล้อมอยู่คือคนที่ต้องยิง พิมพ์สมการแล้วกด <b>ยิง</b> เส้นกราฟจะถูกเลื่อนขึ้นลงให้ผ่านจุดที่ทหารยืนอยู่เสมอ และวิ่งไปทางด้านที่ค่า x เพิ่มขึ้น</p>
+        <ul>
+          <li>ทหารคนไหนอยู่บนเส้นกราฟ คนนั้นออกจากเกม รวมถึงพวกเดียวกันเอง</li>
+          <li>เส้นกราฟหยุดเมื่อชนหิน ออกนอกสนาม หรือหาค่าไม่ได้ จุดที่ชนจะเป็นหลุมบนหิน และกราฟรอบหลังลอดผ่านหลุมนั้นได้</li>
+          <li>ทีมแดงยิงไปทางซ้าย ตัวเลขบนแกนจะกลับด้านให้ตรงกับที่คุณพิมพ์ในตาของทีมแดง</li>
+          <li>ขณะพิมพ์ จะมีเส้นประแสดงรูปกราฟให้ดูก่อนยิง (เส้นประไม่หยุดที่หิน)</li>
+          <li>ชนิด y′ = f(x, y) คือสมการอนุพันธ์ เส้นกราฟเริ่มที่ตัวทหารแล้วโค้งตามความชัน f(x, y) ที่คุณพิมพ์</li>
+        </ul>
+        <p>ใช้ได้: <code>+ − * / ^</code> <code>x</code> <code>y</code> (เฉพาะโหมด y′) <code>pi</code> <code>e</code> และ <code>sin cos tan asin acos atan sinh cosh tanh exp ln log sqrt abs sign floor ceil round min max pow</code> เขียนติดกันได้ เช่น <code>2x</code> หรือ <code>3sin(x)</code></p>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+// ==LOGIC-START==
+var XMAX = 25, YMAX = 15, HIT_R = 1.0, STEP = 0.05;
+var FUNC1 = { sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan,
+  sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh, exp: Math.exp, ln: Math.log, log: Math.log10, sqrt: Math.sqrt,
+  abs: Math.abs, sign: Math.sign, floor: Math.floor, ceil: Math.ceil, round: Math.round };
+var FUNC2 = { min: Math.min, max: Math.max, pow: Math.pow };
+var CONSTS = { pi: Math.PI, e: Math.E };
+
+function normalize(s) {
+  return String(s == null ? '' : s).replace(/\*\*/g, '^').replace(/×/g, '*').replace(/÷/g, '/').replace(/[−–]/g, '-')
+    .replace(/√/g, 'sqrt').replace(/π/g, 'pi').replace(/²/g, '^2').replace(/³/g, '^3').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function tokenize(s, vars) {
+  var t = [], i = 0;
+  while (i < s.length) {
+    var c = s[i];
+    if (c === ' ') { i++; continue; }
+    if (/[0-9.]/.test(c)) {
+      var j = i;
+      while (j < s.length && /[0-9.]/.test(s[j])) j++;
+      var raw = s.slice(i, j), n = parseFloat(raw);
+      if (isNaN(n) || raw.split('.').length > 2) throw new Error('ตัวเลข "' + raw + '" ไม่ถูกต้อง');
+      t.push({ k: 'num', v: n }); i = j; continue;
+    }
+    if (/[a-z]/.test(c)) {
+      var j2 = i;
+      while (j2 < s.length && /[a-z]/.test(s[j2])) j2++;
+      var w = s.slice(i, j2); i = j2;
+      if (FUNC1[w] || FUNC2[w] || CONSTS.hasOwnProperty(w) || vars.indexOf(w) >= 0) { t.push({ k: 'id', v: w }); continue; }
+      if (/^[xye]+$/.test(w)) {
+        for (var q = 0; q < w.length; q++) {
+          var ch = w[q];
+          if (ch !== 'e' && vars.indexOf(ch) < 0) throw new Error('โหมดนี้ใช้ตัวแปร ' + vars.join(', ') + ' เท่านั้น (พบ ' + ch + ')');
+          t.push({ k: 'id', v: ch });
+        }
+        continue;
+      }
+      var fh = /^(sinh|cosh|tanh|asin|acos|atan|sin|cos|tan|exp|ln|log|sqrt|abs|sign|floor|ceil|round)/.exec(w);
+      if (fh) throw new Error('ฟังก์ชันต้องมีวงเล็บ เช่น ' + fh[1] + '(x)');
+      throw new Error('ไม่รู้จัก "' + w + '"');
+    }
+    if ('+-*/^'.indexOf(c) >= 0) { t.push({ k: 'op', v: c }); i++; continue; }
+    if (c === '(') { t.push({ k: 'lp' }); i++; continue; }
+    if (c === ')') { t.push({ k: 'rp' }); i++; continue; }
+    if (c === ',') { t.push({ k: 'comma' }); i++; continue; }
+    throw new Error('อักขระ "' + c + '" ใช้ไม่ได้');
+  }
+  return t;
+}
+
+function compile(src, vars) {
+  src = String(src == null ? '' : src);
+  if (src.length > 200) throw new Error('สมการยาวเกินไป');
+  var toks = tokenize(normalize(src), vars), p = 0;
+  if (!toks.length) throw new Error('ยังไม่ได้พิมพ์สมการ');
+  function peek() { return toks[p]; }
+  function isOp(t, v) { return t && t.k === 'op' && t.v === v; }
+  function need(k, msg) { var t = toks[p++]; if (!t || t.k !== k) throw new Error(msg); return t; }
+  function parseAdd() {
+    var l = parseMul();
+    while (isOp(peek(), '+') || isOp(peek(), '-')) {
+      var o = toks[p++].v, r = parseMul(), a = l, b = r;
+      l = o === '+' ? function (x, y) { return a(x, y) + b(x, y); } : function (x, y) { return a(x, y) - b(x, y); };
+    }
+    return l;
+  }
+  function parseMul() {
+    var l = parseUnary();
+    for (;;) {
+      var t = peek();
+      if (!t) break;
+      if (isOp(t, '*') || isOp(t, '/')) {
+        p++;
+        var r = parseUnary(), a = l, b = r;
+        l = t.v === '*' ? function (x, y) { return a(x, y) * b(x, y); } : function (x, y) { return a(x, y) / b(x, y); };
+      } else if (t.k === 'id' || t.k === 'lp' || t.k === 'num') {
+        var r2 = parseUnary(), a2 = l, b2 = r2;
+        l = function (x, y) { return a2(x, y) * b2(x, y); };
+      } else break;
+    }
+    return l;
+  }
+  function parseUnary() {
+    if (isOp(peek(), '-')) { p++; var f = parseUnary(); return function (x, y) { return -f(x, y); }; }
+    if (isOp(peek(), '+')) { p++; return parseUnary(); }
+    return parsePow();
+  }
+  function parsePow() {
+    var base = parseAtom();
+    if (isOp(peek(), '^')) {
+      p++;
+      var ex = parseUnary();
+      return function (x, y) { return Math.pow(base(x, y), ex(x, y)); };
+    }
+    return base;
+  }
+  function parseAtom() {
+    var t = toks[p++];
+    if (!t) throw new Error('สมการยังไม่จบ');
+    if (t.k === 'num') { var v = t.v; return function () { return v; }; }
+    if (t.k === 'lp') { var e = parseAdd(); need('rp', 'วงเล็บยังไม่ปิด'); return e; }
+    if (t.k === 'id') {
+      var n = t.v;
+      if (FUNC1[n]) {
+        need('lp', 'ฟังก์ชัน ' + n + ' ต้องมีวงเล็บ');
+        var a = parseAdd(); need('rp', 'วงเล็บของ ' + n + ' ยังไม่ปิด');
+        var fn1 = FUNC1[n];
+        return function (x, y) { return fn1(a(x, y)); };
+      }
+      if (FUNC2[n]) {
+        need('lp', 'ฟังก์ชัน ' + n + ' ต้องมีวงเล็บ');
+        var a1 = parseAdd(); need('comma', n + ' ต้องมีสองค่า คั่นด้วยจุลภาค');
+        var a2 = parseAdd(); need('rp', 'วงเล็บของ ' + n + ' ยังไม่ปิด');
+        var fn2 = FUNC2[n];
+        return function (x, y) { return fn2(a1(x, y), a2(x, y)); };
+      }
+      if (n === 'x') return function (x) { return x; };
+      if (n === 'y') return function (x, y) { return y; };
+      var k = CONSTS[n];
+      return function () { return k; };
+    }
+    throw new Error('อ่านสมการไม่ได้ตรงตำแหน่งที่ ' + p);
+  }
+  var f = parseAdd();
+  if (p < toks.length) throw new Error('มีส่วนที่อ่านไม่ได้ท้ายสมการ');
+  return f;
+}
+
+// Curve in the shooter's frame: X runs from X0 to XMAX. mode 'fn' shifts f so it passes through (X0, y0); 'ode' integrates y' = f(X, y).
+function genCurve(mode, fn, X0, y0) {
+  var Xs = [X0], Ys = [y0], end = 'edge', i, X, y;
+  if (mode === 'fn') {
+    var f0 = fn(X0, 0);
+    if (!isFinite(f0)) return { Xs: Xs, Ys: Ys, end: 'undefined' };
+    var prev = y0;
+    for (i = 1; ; i++) {
+      X = X0 + i * STEP;
+      if (X > XMAX + 1e-9) { end = 'edge'; break; }
+      var v = fn(X, 0);
+      if (!isFinite(v)) { end = 'undefined'; break; }
+      y = v - f0 + y0;
+      if (Math.abs(y - prev) > 6) { end = 'jump'; break; }
+      if (y > YMAX + 0.5 || y < -YMAX - 0.5) { end = 'bounds'; break; }
+      Xs.push(X); Ys.push(y); prev = y;
+    }
+  } else {
+    y = y0;
+    for (i = 1; ; i++) {
+      X = X0 + i * STEP;
+      if (X > XMAX + 1e-9) { end = 'edge'; break; }
+      var Xp = X - STEP, h = STEP;
+      var k1 = fn(Xp, y), k2 = fn(Xp + h / 2, y + h * k1 / 2), k3 = fn(Xp + h / 2, y + h * k2 / 2), k4 = fn(Xp + h, y + h * k3);
+      var yn = y + h * (k1 + 2 * k2 + 2 * k3 + k4) / 6;
+      if (!isFinite(yn)) { end = 'undefined'; break; }
+      if (Math.abs(yn - y) > 6) { end = 'jump'; break; }
+      if (yn > YMAX + 0.5 || yn < -YMAX - 0.5) { end = 'bounds'; break; }
+      y = yn; Xs.push(X); Ys.push(y);
+    }
+  }
+  return { Xs: Xs, Ys: Ys, end: end };
+}
+
+// Walks the curve in world coordinates; stops at the first rock, collects every soldier it passes through.
+function simulate(state, shooter, curve, dir) {
+  var pts = [], hits = [], seen = {}, prev = null;
+  for (var i = 0; i < curve.Xs.length; i++) {
+    var x = dir * curve.Xs[i], y = curve.Ys[i];
+    if (prev === null) { pts.push({ x: x, y: y }); prev = { x: x, y: y }; continue; }
+    var dx = x - prev.x, dy = y - prev.y, n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 0.12));
+    for (var k = 1; k <= n; k++) {
+      var px = prev.x + dx * k / n, py = prev.y + dy * k / n;
+      for (var a = 0; a < state.obstacles.length; a++) {
+        var o = state.obstacles[a];
+        if (Math.hypot(px - o.x, py - o.y) < o.r) {
+          var inHole = false, cr = state.craters || [];
+          for (var q = 0; q < cr.length; q++) { if (Math.hypot(px - cr[q].x, py - cr[q].y) < cr[q].r) { inHole = true; break; } }
+          if (!inHole) { pts.push({ x: px, y: py }); return { pts: pts, hits: hits, end: 'rock' }; }
+        }
+      }
+      pts.push({ x: px, y: py });
+      for (var b = 0; b < state.soldiers.length; b++) {
+        var s = state.soldiers[b];
+        if (!s.alive || s === shooter || seen[s.id]) continue;
+        if (Math.hypot(px - s.x, py - s.y) < HIT_R) { seen[s.id] = 1; hits.push({ i: pts.length - 1, id: s.id }); }
+      }
+    }
+    prev = { x: x, y: y };
+  }
+  return { pts: pts, hits: hits, end: curve.end };
+}
+
+function fmtNum(v) {
+  var s = v.toFixed(7).replace(/0+$/, '').replace(/\.$/, '');
+  return (s === '' || s === '-0') ? '0' : s;
+}
+function exprFor(c, X0, mode) {
+  var sh = X0 >= 0 ? '(x-' + fmtNum(X0) + ')' : '(x+' + fmtNum(-X0) + ')';
+  if (mode === 'fn') {
+    return fmtNum(c.m0) + '*' + sh + (c.c < 0 ? ' - ' : ' + ') + fmtNum(Math.abs(c.c)) + '*' + sh + '^' + c.fam;
+  }
+  var coef = c.fam * c.c;
+  return fmtNum(c.m0) + (coef < 0 ? ' - ' : ' + ') + fmtNum(Math.abs(coef)) + '*' + sh + (c.fam === 3 ? '^2' : '');
+}
+
+function botPlan(state, shooter, mode, level) {
+  var dir = shooter.team === 0 ? 1 : -1, X0 = dir * shooter.x, vars = mode === 'fn' ? ['x'] : ['x', 'y'];
+  var frW = level === 'easy' ? 3 : level === 'normal' ? 8 : 14, step = level === 'expert' ? 0.125 : 0.25;
+  var enemies = state.soldiers.filter(function (s) { return s.alive && s.team !== shooter.team; });
+  var tried = [], best = null;
+  function evalCand(c) {
+    var expr = exprFor(c, X0, mode), f;
+    try { f = compile(expr, vars); } catch (e) { return null; }
+    var sim = simulate(state, shooter, genCurve(mode, f, X0, shooter.y), dir), en = 0, fr = 0;
+    sim.hits.forEach(function (h) {
+      var s = state.soldiers.filter(function (q) { return q.id === h.id; })[0];
+      if (s.team === shooter.team) fr++; else en++;
+    });
+    return { c: c, expr: expr, en: en, fr: fr, score: en * 10 - fr * frW + Math.random() * 0.4 };
+  }
+  enemies.forEach(function (e) {
+    var T = dir * e.x - X0, D = e.y - shooter.y;
+    if (T < 0.5) return;
+    [2, 3].forEach(function (fam) {
+      for (var m = -4; m <= 4.001; m += step) {
+        var m0 = Math.round(m * 100) / 100, r = evalCand({ fam: fam, m0: m0, c: (D - m0 * T) / Math.pow(T, fam) });
+        if (r) { tried.push(r); if (!best || r.score > best.score) best = r; }
+      }
+    });
+  });
+  if (!best) return { expr: mode === 'fn' ? '0*x' : '0', aimed: false };
+  var pick = best;
+  if (best.en === 0) {
+    var safe = tried.filter(function (r) { return r.fr === 0; });
+    pick = safe.length ? safe[Math.floor(Math.random() * safe.length)] : best;
+  }
+  var p = level === 'easy' ? 0.7 : level === 'normal' ? 0.4 : level === 'hard' ? 0.12 : 0, amp = level === 'easy' ? 1.0 : level === 'normal' ? 0.45 : 0.2;
+  if (Math.random() < p) {
+    var c2 = { fam: pick.c.fam, m0: pick.c.m0 + (Math.random() * 2 - 1) * amp, c: pick.c.c };
+    return { expr: exprFor(c2, X0, mode), aimed: false };
+  }
+  return { expr: pick.expr, aimed: pick.en > 0 };
+}
+// ==LOGIC-END==
+
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var cv = $('#cv'), ctx = cv.getContext('2d'), board = $('#board');
+  var exprEl = $('#expr'), errEl = $('#err'), msgEl = $('#msg'), fireBtn = $('#fireBtn');
+  var settings = { opp: 'bot', level: 'normal', map: 'random', count: 3, mode: 'fn' };
+  try {
+    var saved = JSON.parse(localStorage.getItem('graph-battle-settings') || '{}');
+    ['opp', 'level', 'map', 'mode'].forEach(function (k) { if (typeof saved[k] === 'string') settings[k] = saved[k]; });
+    if (typeof saved.count === 'number') settings.count = saved.count;
+  } catch (e) {}
+  var G = null, gid = 0, preview = null, shot = null, lastShot = null, fx = [], particles = [], banner = null;
+  var shake = { t0: 0, mag: 0 }, raf = 0, lastDraw = 0, dpr = 1, W = 0, H = 0, viewDir = 1, T = 0;
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  var LEVELS = { easy: 'ง่าย', normal: 'ปานกลาง', hard: 'ยาก', expert: 'ยากมาก' };
+  var HINTS = {
+    easy: 'บอทเล็งพลาดบ่อยและคิดช้า เหมาะกับการฝึกพิมพ์สมการ',
+    normal: 'บอทเล็งแม่นขึ้น แต่ยังพลาดให้เห็นบ้าง',
+    hard: 'บอทแม่นเกือบทุกนัด และเลี่ยงยิงโดนพวกเดียวกัน',
+    expert: 'บอทคำนวณแทบไม่พลาด เลือกวิถีที่เก็บได้หลายคน และได้ยิงก่อนเสมอ'
+  };
+  var BOT_DELAY = { easy: 1500, normal: 1100, hard: 800, expert: 550 };
+  var MAPS = { random: 'ทุ่งสุ่ม', wall: 'กำแพงกลางสนาม', fort: 'ป้อมสองฝั่ง', scatter: 'ทุ่งหินเกลื่อน', open: 'สนามโล่ง' };
+
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function r1(v) { return Math.round(v * 10) / 10; }
+  function isBot(team) { return settings.opp === 'bot' && team === 1; }
+  function teamName(t) { return settings.opp === 'bot' ? (t === 0 ? 'คุณ' : 'บอท') : (t === 0 ? 'ทีมน้ำเงิน' : 'ทีมแดง'); }
+  function vars() { return settings.mode === 'fn' ? ['x'] : ['x', 'y']; }
+  function vibrate(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+  /* ---------- maps ---------- */
+  function makeMap(id) {
+    var o = [], i, tries;
+    function rock(x, y, r) { o.push({ x: r1(x), y: r1(y), r: r1(r), born: 0 }); }
+    function free(x, y, r, gap) { return o.every(function (p) { return Math.hypot(p.x - x, p.y - y) > p.r + r + gap; }); }
+    if (id === 'random') {
+      var n = 3 + Math.floor(Math.random() * 3);
+      for (tries = 0; o.length < n && tries < 300; tries++) { var r = rnd(1.4, 3.2), x = rnd(-12, 12), y = rnd(-9, 9); if (free(x, y, r, 2)) rock(x, y, r); }
+    } else if (id === 'wall') {
+      var gap = Math.floor(rnd(0, 6));
+      for (i = 0; i < 6; i++) { if (i !== gap) rock(rnd(-0.6, 0.6), -12.5 + i * 5, 2.4); }
+    } else if (id === 'fort') {
+      [-1, 1].forEach(function (sd) { rock(sd * 9, 5.5, 2.5); rock(sd * 9, -5.5, 2.5); rock(sd * 5, 0, 1.6); });
+      rock(0, rnd(-6, 6), 2);
+    } else if (id === 'scatter') {
+      for (tries = 0; o.length < 10 && tries < 500; tries++) { var r2 = rnd(1.0, 1.7), x2 = rnd(-13, 13), y2 = rnd(-11, 11); if (free(x2, y2, r2, 1.2)) rock(x2, y2, r2); }
+    }
+    return o;
+  }
+
+  /* ---------- sound (synthesised with Web Audio, no audio files) ---------- */
+  var Snd = (function () {
+    var ac = null, master = null, on = true, nbuf = null, flight = null;
+    try { if (localStorage.getItem('graph-battle-sound') === 'off') on = false; } catch (e) {}
+    function ensure() {
+      if (!on) return null;
+      if (!ac) {
+        try {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          ac = new AC(); master = ac.createGain(); master.gain.value = 0.6;
+          var comp = ac.createDynamicsCompressor(); master.connect(comp); comp.connect(ac.destination);
+        } catch (e) { ac = null; return null; }
+      }
+      if (ac.state === 'suspended') { try { ac.resume(); } catch (e2) {} }
+      return ac.state === 'running' ? ac : null;
+    }
+    function env(g, t, a, d, vol) {
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + a);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
+    }
+    function tone(f0, f1, dur, type, vol, delay) {
+      var c = ensure(); if (!c) return;
+      var t = c.currentTime + (delay || 0), o = c.createOscillator(), g = c.createGain();
+      o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t);
+      if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      env(g, t, 0.008, dur, vol);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+    }
+    function noise(dur, vol, f0, f1, delay, type) {
+      var c = ensure(); if (!c) return;
+      if (!nbuf) { nbuf = c.createBuffer(1, c.sampleRate, c.sampleRate); var d = nbuf.getChannelData(0); for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+      var t = c.currentTime + (delay || 0), s = c.createBufferSource(), bq = c.createBiquadFilter(), g = c.createGain();
+      s.buffer = nbuf; bq.type = type || 'lowpass';
+      bq.frequency.setValueAtTime(f0, t); bq.frequency.exponentialRampToValueAtTime(f1 || f0, t + dur);
+      env(g, t, 0.005, dur, vol);
+      s.connect(bq); bq.connect(g); g.connect(master); s.start(t); s.stop(t + dur + 0.05);
+    }
+    function flightStop() {
+      if (!flight || !ac) { flight = null; return; }
+      var t = ac.currentTime;
+      try { flight.g.gain.cancelScheduledValues(t); flight.g.gain.setTargetAtTime(0.0001, t, 0.03); flight.o.stop(t + 0.2); } catch (e) {}
+      flight = null;
+    }
+    return {
+      unlock: function () { ensure(); },
+      isOn: function () { return on; },
+      toggle: function () {
+        on = !on;
+        try { localStorage.setItem('graph-battle-sound', on ? 'on' : 'off'); } catch (e) {}
+        if (!on) flightStop(); else { ensure(); }
+        return on;
+      },
+      key: function () { tone(880, 640, 0.05, 'square', 0.04); },
+      select: function () { tone(660, 990, 0.08, 'triangle', 0.07); },
+      start: function () { [392, 523, 659, 784].forEach(function (f, i) { tone(f, f, 0.16, 'triangle', 0.09, i * 0.07); }); noise(0.4, 0.12, 400, 3000, 0, 'bandpass'); },
+      err: function () { tone(150, 100, 0.2, 'square', 0.06); },
+      spawn: function (i) { tone(320 + i * 45, 480 + i * 45, 0.09, 'sine', 0.05, 0); },
+      turn: function () { tone(520, 520, 0.1, 'triangle', 0.07); tone(780, 780, 0.16, 'triangle', 0.07, 0.09); },
+      think: function () { tone(600, 600, 0.03, 'square', 0.025); },
+      fire: function () {
+        tone(130, 45, 0.3, 'sine', 0.55);
+        noise(0.34, 0.3, 800, 5200, 0, 'bandpass');
+        tone(160, 1400, 0.26, 'sawtooth', 0.08);
+        tone(1800, 3200, 0.07, 'square', 0.025, 0.02);
+      },
+      flightStart: function () {
+        var c = ensure(); if (!c) return;
+        flightStop();
+        var o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
+        o.type = 'triangle'; o.frequency.value = 400;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.06);
+        o.connect(g); g.connect(master); o.start(t);
+        flight = { o: o, g: g };
+      },
+      flightMove: function (y) {
+        if (!flight || !ac) return;
+        flight.o.frequency.setTargetAtTime(220 + (y + 15) / 30 * 700, ac.currentTime, 0.03);
+      },
+      flightStop: flightStop,
+      kill: function (friendly) {
+        noise(0.7, 0.55, 2400, 70);
+        tone(160, 32, 0.55, 'sine', 0.65);
+        [0.05, 0.12, 0.2].forEach(function (d) { noise(0.12, 0.2, 5000, 1500, d, 'highpass'); });
+        if (friendly) { tone(140, 60, 0.55, 'sawtooth', 0.12, 0.08); tone(105, 52, 0.5, 'sawtooth', 0.1, 0.18); }
+        else { tone(880, 880, 0.16, 'triangle', 0.09, 0.1); tone(1320, 1320, 0.28, 'triangle', 0.09, 0.2); }
+      },
+      rock: function () {
+        noise(0.22, 0.45, 900, 100); noise(0.12, 0.3, 700, 120, 0.06); noise(0.1, 0.25, 600, 100, 0.13);
+        tone(95, 45, 0.25, 'sine', 0.45); tone(2200, 900, 0.05, 'square', 0.03);
+      },
+      fizzle: function () { tone(520, 140, 0.22, 'triangle', 0.06); },
+      win: function () { [523, 659, 784, 1047].forEach(function (f, i) { tone(f, f, 0.22, 'triangle', 0.11, i * 0.11); }); tone(1047, 1047, 0.6, 'sine', 0.08, 0.5); },
+      lose: function () { [392, 330, 262, 196].forEach(function (f, i) { tone(f, f * 0.97, 0.3, 'sawtooth', 0.06, i * 0.16); }); }
+    };
+  })();
+
+  /* ---------- game setup ---------- */
+  function newGame() {
+    var obstacles = makeMap(settings.map), i, t, tries, now = performance.now();
+    obstacles.forEach(function (ob, k) { ob.born = reduceMotion ? 0 : now + k * 70; });
+    var soldiers = [], id = 0;
+    for (i = 0; i < settings.count; i++) {
+      for (t = 0; t < 2; t++) {
+        for (tries = 0; tries < 500; tries++) {
+          var s = { id: id, team: t, x: r1(t === 0 ? rnd(-23, -14) : rnd(14, 23)), y: r1(rnd(-12, 12)), alive: true, born: 0, deadAt: 0 };
+          var ok = obstacles.every(function (q) { return Math.hypot(q.x - s.x, q.y - s.y) > q.r + 1.8; }) &&
+            soldiers.every(function (q) { return Math.hypot(q.x - s.x, q.y - s.y) > 4.2; });
+          if (ok || tries === 499) { soldiers.push(s); id++; break; }
+        }
+      }
+    }
+    soldiers.sort(function (a, b) { return a.team - b.team || a.id - b.id; });
+    soldiers.forEach(function (s, k) { s.id = k; s.born = reduceMotion ? 0 : now + 350 + k * 80; });
+    gid++;
+    var first = (settings.opp === 'bot' && settings.level === 'expert') ? 1 : 0;
+    G = { obstacles: obstacles, craters: [], soldiers: soldiers, turn: first, shooter: null, busy: true, over: false, last: [-1, -1] };
+    preview = null; shot = null; lastShot = null; fx = []; particles = []; banner = null; shake.t0 = 0;
+    Snd.flightStop();
+    $('#overlay').hidden = true;
+    $('#nm0').textContent = teamName(0); $('#nm1').textContent = teamName(1);
+    $('#gameInfo').textContent = (settings.opp === 'bot' ? LEVELS[settings.level] + ' · ' : 'สองคน · ') + MAPS[settings.map];
+    $('#eqPrefix').textContent = settings.mode === 'fn' ? 'y =' : 'y′ =';
+    exprEl.placeholder = settings.mode === 'fn' ? 'เช่น 0.25*x' : 'เช่น 0.3*x - 1';
+    buildKeys(); buildExamples();
+    if (!reduceMotion) soldiers.forEach(function (s, k) { setTimeout(function () { Snd.spawn(k); }, 350 + k * 80); });
+    setTimeout((function (g) { return function () { if (gid === g) beginTurn(); }; })(gid), reduceMotion ? 0 : 350 + soldiers.length * 80 + 200);
+    exprEl.disabled = true; fireBtn.disabled = true;
+    $('#turnLabel').textContent = 'กำลังจัดสนาม…'; msgEl.textContent = '';
+    updateScore(); startLoop();
+  }
+
+  function alive(t) { return G.soldiers.filter(function (s) { return s.team === t && s.alive; }); }
+  function nextShooter(t) {
+    var team = G.soldiers.filter(function (s) { return s.team === t; }), start = G.last[t], n = team.length;
+    for (var k = 1; k <= n; k++) { var s = team[(start + k + n) % n]; if (s.alive) { G.last[t] = team.indexOf(s); return s; } }
+    return null;
+  }
+
+  function beginTurn() {
+    if (G.over) return;
+    G.busy = false;
+    var s = nextShooter(G.turn);
+    G.shooter = s; viewDir = s.team === 0 ? 1 : -1; preview = null;
+    exprEl.value = ''; errEl.textContent = ''; errEl.className = 'err';
+    var X = viewDir * s.x, who = isBot(G.turn) ? 'บอท' : teamName(G.turn), human = !isBot(G.turn);
+    $('#turnLabel').innerHTML = '<b>ตาของ ' + who + '</b> · ทหารยืนที่ (x, y) = (' + r1(X) + ', ' + s.y + ')';
+    exprEl.disabled = !human; fireBtn.disabled = !human;
+    banner = { text: 'ตาของ' + who, team: G.turn, t0: performance.now() };
+    if (human) {
+      Snd.turn();
+      msgEl.textContent = settings.opp === 'two' && G.turn === 1
+        ? 'ตาทีมแดง แกน x กลับด้านแล้ว ศัตรูอยู่ทางด้านที่ x เพิ่มขึ้น'
+        : 'พิมพ์สมการแล้วกดยิง ศัตรูอยู่ทางด้านที่ x เพิ่มขึ้น';
+    } else {
+      msgEl.textContent = 'บอทกำลังคิด…';
+      [0, 250, 500].forEach(function (d) { setTimeout(Snd.think, d); });
+      setTimeout((function (g) { return function () { if (gid === g) botMove(); }; })(gid), BOT_DELAY[settings.level] || 900);
+    }
+    updateScore(); startLoop();
+  }
+
+  function updateScore() {
+    [0, 1].forEach(function (t) {
+      var total = G.soldiers.filter(function (s) { return s.team === t; }), el = $('#pips' + t), h = '';
+      total.forEach(function (s) { h += '<span class="pip' + (s.alive ? ' on' : '') + '"></span>'; });
+      el.innerHTML = h;
+      el.setAttribute('aria-label', 'เหลือ ' + alive(t).length + ' คน');
+    });
+  }
+
+  /* ---------- effects ---------- */
+  function addShake(mag) { if (reduceMotion) return; shake.t0 = performance.now(); shake.mag = Math.max(shake.mag * 0.5, mag); }
+  function burst(x, y, color, n, speed, life, size) {
+    if (reduceMotion) return;
+    var now = performance.now();
+    for (var i = 0; i < n && particles.length < 500; i++) {
+      var a = Math.random() * Math.PI * 2, v = speed * (0.35 + Math.random() * 0.65);
+      particles.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 26, t0: now, life: life * (0.6 + Math.random() * 0.6), color: color, size: size * (0.7 + Math.random() * 0.8) });
+    }
+  }
+  function confetti(colors) {
+    if (reduceMotion) return;
+    var now = performance.now();
+    for (var i = 0; i < 90 && particles.length < 500; i++) {
+      particles.push({ x: rnd(-24, 24), y: rnd(15, 22), vx: rnd(-3, 3), vy: rnd(-4, 1), g: 7, t0: now + Math.random() * 500, life: rnd(1800, 3000),
+        color: colors[i % colors.length], size: rnd(3, 6), conf: true, rot: Math.random() * 6, vr: rnd(-6, 6) });
+    }
+  }
+  function addFx(kind, x, y, color, dur) { if (reduceMotion && kind !== 'ring') return; fx.push({ kind: kind, x: x, y: y, color: color, t0: performance.now(), dur: dur || 550 }); }
+
+  /* ---------- firing ---------- */
+  function escapeHtml(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function fire(src) {
+    if (!G || G.busy || G.over) return false;
+    var f;
+    try { f = compile(src, vars()); } catch (e) { errEl.textContent = e.message; errEl.className = 'err'; Snd.err(); return false; }
+    var sh = G.shooter, dir = sh.team === 0 ? 1 : -1;
+    var curve = genCurve(settings.mode, f, dir * sh.x, sh.y);
+    var sim = simulate(G, sh, curve, dir);
+    G.busy = true; preview = null; lastShot = null; banner = null;
+    shot = { sim: sim, idx: 0, team: sh.team, dir: dir, kills: 0, friendly: 0 };
+    exprEl.disabled = true; fireBtn.disabled = true;
+    errEl.textContent = '';
+    msgEl.innerHTML = 'ยิงด้วย <code>' + (settings.mode === 'fn' ? 'y = ' : 'y′ = ') + escapeHtml(src.trim()) + '</code>';
+    var col = css(sh.team === 0 ? '--blue' : '--red');
+    addFx('flash', sh.x, sh.y, col, 260); addFx('ring', sh.x, sh.y, col, 420);
+    burst(sh.x, sh.y, col, 12, 9, 450, 3);
+    addShake(2.5);
+    Snd.fire(); Snd.flightStart();
+    startLoop();
+    return true;
+  }
+
+  function botMove() {
+    if (!G || G.over || G.busy || !isBot(G.turn)) return;
+    var plan = botPlan(G, G.shooter, settings.mode, settings.level);
+    exprEl.value = plan.expr;
+    fire(plan.expr);
+  }
+
+  function finishShot() {
+    Snd.flightStop();
+    var sim = shot.sim, reasons = { rock: 'กราฟชนหิน เกิดหลุมบนก้อนหิน', edge: 'กราฟออกนอกสนามไปทางขอบ', bounds: 'กราฟพุ่งออกนอกกรอบด้านบนหรือล่าง', undefined: 'สมการหาค่าไม่ได้ที่จุดนี้ กราฟจึงหยุด', jump: 'ค่ากระโดดแรงเกินไป กราฟจึงขาดตอน' };
+    var txt = reasons[sim.end] || 'กราฟสิ้นสุด';
+    var k = shot.kills, f = shot.friendly;
+    var res = k + f === 0 ? 'ไม่โดนใคร' : 'โดน ' + (k + f) + ' คน' + (f ? ' (เป็นพวกเดียวกัน ' + f + ' คน)' : '');
+    msgEl.innerHTML = msgEl.innerHTML + '<br>' + txt + ' · ' + res;
+    shot.endT = performance.now();
+    lastShot = shot; shot = null; G.busy = false;
+    updateScore();
+    var a0 = alive(0).length, a1 = alive(1).length;
+    if (a0 === 0 || a1 === 0) { G.over = true; gameOver(a0, a1); return; }
+    G.turn = 1 - G.turn; G.busy = true;
+    setTimeout((function (g) { return function () { if (gid === g) beginTurn(); }; })(gid), 1500);
+  }
+
+  function gameOver(a0, a1) {
+    var t, p, win = false, g = gid;
+    if (a0 === 0 && a1 === 0) { t = 'เสมอ'; p = 'ยิงโดนกันเองจนไม่เหลือใคร'; }
+    else {
+      var w = a0 === 0 ? 1 : 0;
+      if (settings.opp === 'bot') { win = w === 0; t = win ? 'คุณชนะ!' : 'บอทชนะ'; p = win ? 'ทีมศัตรูไม่เหลือแล้ว ลองเพิ่มระดับความยากดูไหม' : 'ทหารของคุณหมดสนาม ลองใหม่อีกที'; }
+      else { win = true; t = (w === 0 ? 'ทีมน้ำเงิน' : 'ทีมแดง') + 'ชนะ!'; p = 'อีกฝั่งไม่เหลือทหารแล้ว'; }
+    }
+    exprEl.disabled = true; fireBtn.disabled = true;
+    $('#turnLabel').innerHTML = '<b>จบเกม</b>';
+    if (win) { confetti([css('--blue'), css('--red'), css('--ink'), css('--ok')]); setTimeout(Snd.win, 500); }
+    else setTimeout(Snd.lose, 500);
+    setTimeout(function () {
+      if (gid !== g) return;
+      $('#ovTitle').textContent = t; $('#ovText').textContent = p; $('#overlay').hidden = false;
+      $('#againBtn').focus();
+    }, reduceMotion ? 0 : 1400);
+    startLoop();
+  }
+
+  /* ---------- live preview ---------- */
+  function onInput() {
+    if (!G || G.busy || G.over || isBot(G.turn)) return;
+    var v = exprEl.value;
+    if (!v.trim()) { preview = null; errEl.textContent = ''; errEl.className = 'err'; draw(); return; }
+    try {
+      var f = compile(v, vars()), sh = G.shooter, dir = sh.team === 0 ? 1 : -1;
+      var c = genCurve(settings.mode, f, dir * sh.x, sh.y);
+      preview = { Xs: c.Xs, dir: dir, Ys: c.Ys };
+      errEl.textContent = 'อ่านสมการได้ กดยิงได้เลย'; errEl.className = 'err ok';
+    } catch (e) { preview = null; errEl.textContent = e.message; errEl.className = 'err'; }
+    draw();
+  }
+
+  /* ---------- drawing ---------- */
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function sx(x) { return (x + XMAX) / (2 * XMAX) * W; }
+  function sy(y) { return (YMAX - y) / (2 * YMAX) * H; }
+  function pop(k) { k = Math.max(0, Math.min(1, k)); var c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); }
+
+  function resize() {
+    var w = Math.max(200, Math.floor(board.clientWidth));
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    W = w; H = Math.round(w * 0.6);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.height = H + 'px';
+    draw();
+  }
+
+  function draw() {
+    if (!G) return;
+    var now = performance.now();
+    var C = { paper: css('--paper'), grid: css('--grid'), gridS: css('--grid-strong'), ink: css('--ink'), soft: css('--ink-soft'), c0: css('--blue'), c1: css('--red'), rock: css('--rock') };
+    var unit = W / (2 * XMAX), i;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = C.paper; ctx.fillRect(0, 0, W, H);
+    var sk = now - shake.t0;
+    if (!reduceMotion && sk < 380) {
+      var kk = 1 - sk / 380;
+      ctx.translate((Math.random() * 2 - 1) * shake.mag * kk, (Math.random() * 2 - 1) * shake.mag * kk);
+    }
+    for (i = -XMAX; i <= XMAX; i++) {
+      ctx.strokeStyle = i === 0 ? C.soft : (i % 5 === 0 ? C.gridS : C.grid);
+      ctx.lineWidth = i === 0 ? 1.4 : 1;
+      ctx.beginPath(); ctx.moveTo(Math.round(sx(i)) + 0.5, 0); ctx.lineTo(Math.round(sx(i)) + 0.5, H); ctx.stroke();
+    }
+    for (i = -YMAX; i <= YMAX; i++) {
+      ctx.strokeStyle = i === 0 ? C.soft : (i % 5 === 0 ? C.gridS : C.grid);
+      ctx.lineWidth = i === 0 ? 1.4 : 1;
+      ctx.beginPath(); ctx.moveTo(0, Math.round(sy(i)) + 0.5); ctx.lineTo(W, Math.round(sy(i)) + 0.5); ctx.stroke();
+    }
+    ctx.font = '10px "IBM Plex Mono", monospace'; ctx.fillStyle = C.soft;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    for (i = -20; i <= 20; i += 5) { var lv = viewDir * i; ctx.fillText(String(lv === 0 ? 0 : lv), sx(i), H - 3); }
+    ctx.textAlign = 'left';
+    for (i = -10; i <= 10; i += 5) { if (i === 0) continue; ctx.fillText(String(i), 3, sy(i) - 2); }
+    // rocks, with craters bitten out of them
+    G.obstacles.forEach(function (o) {
+      var sc = pop((now - o.born) / 420);
+      if (sc <= 0) return;
+      var cx = sx(o.x), cy = sy(o.y), r = o.r * unit * sc;
+      ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = C.paper; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.strokeStyle = C.rock; ctx.lineWidth = 1.2;
+      for (var d = -2 * r; d < 2 * r; d += 5) { ctx.beginPath(); ctx.moveTo(cx + d - r, cy + r); ctx.lineTo(cx + d + r, cy - r); ctx.stroke(); }
+      ctx.restore();
+      ctx.strokeStyle = C.rock; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+      G.craters.forEach(function (c) {
+        if (Math.hypot(c.x - o.x, c.y - o.y) >= o.r + c.r) return;
+        var crr = c.r * unit * pop((now - c.born) / 320), ccx = sx(c.x), ccy = sy(c.y);
+        ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, Math.PI * 2); ctx.clip();
+        ctx.beginPath(); ctx.arc(ccx, ccy, crr, 0, Math.PI * 2); ctx.fillStyle = C.paper; ctx.fill(); ctx.restore();
+        ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+        ctx.beginPath(); ctx.arc(ccx, ccy, crr, 0, Math.PI * 2); ctx.strokeStyle = C.rock; ctx.lineWidth = 1.8; ctx.stroke(); ctx.restore();
+      });
+    });
+    function trace(pts, upto, color, width, alpha, dash, glow, dashOff) {
+      if (!pts.length) return;
+      ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+      ctx.setLineDash(dash || []); ctx.lineDashOffset = dashOff || 0; ctx.beginPath();
+      for (var j = 0; j <= upto && j < pts.length; j++) { var px = sx(pts[j].x), py = sy(pts[j].y); if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+      ctx.stroke(); ctx.restore();
+    }
+    if (lastShot) {
+      var fade = reduceMotion ? 0.4 : 0.5 * Math.max(0, 1 - (now - lastShot.endT) / 3000);
+      if (fade > 0.02) trace(lastShot.sim.pts, lastShot.sim.pts.length, lastShot.team === 0 ? C.c0 : C.c1, 2, fade);
+    }
+    if (preview && G.shooter) {
+      var pp = preview.Xs.map(function (X, j) { return { x: preview.dir * X, y: preview.Ys[j] }; });
+      trace(pp, pp.length, G.shooter.team === 0 ? C.c0 : C.c1, 2, 0.9, [6, 5], 0, reduceMotion ? 0 : -now / 45);
+    }
+    var head = null;
+    if (shot) {
+      var col = shot.team === 0 ? C.c0 : C.c1;
+      trace(shot.sim.pts, Math.floor(shot.idx), col, 3, 1, null, reduceMotion ? 0 : 12);
+      head = shot.sim.pts[Math.min(Math.floor(shot.idx), shot.sim.pts.length - 1)];
+    }
+    var rr = Math.max(6, unit * 0.85);
+    G.soldiers.forEach(function (s) {
+      var cx = sx(s.x), cy = sy(s.y), col2 = s.team === 0 ? C.c0 : C.c1;
+      if (!s.alive) {
+        var dk = (now - s.deadAt) / 500;
+        if (s.deadAt && dk < 1 && !reduceMotion) {
+          ctx.save(); ctx.globalAlpha = 1 - dk; ctx.translate(cx, cy); ctx.rotate(dk * 2.4); ctx.scale(1 + dk * 0.9, 1 + dk * 0.9);
+          ctx.fillStyle = col2; ctx.beginPath();
+          if (s.team === 0) ctx.arc(0, 0, rr, 0, Math.PI * 2);
+          else { ctx.moveTo(0, -rr * 1.2); ctx.lineTo(rr * 1.2, 0); ctx.lineTo(0, rr * 1.2); ctx.lineTo(-rr * 1.2, 0); ctx.closePath(); }
+          ctx.fill(); ctx.restore();
+        }
+        ctx.save(); ctx.globalAlpha = 0.55 * (reduceMotion || !s.deadAt ? 1 : Math.min(1, dk * 2)); ctx.strokeStyle = C.soft; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(cx - rr * 0.7, cy - rr * 0.7); ctx.lineTo(cx + rr * 0.7, cy + rr * 0.7);
+        ctx.moveTo(cx + rr * 0.7, cy - rr * 0.7); ctx.lineTo(cx - rr * 0.7, cy + rr * 0.7); ctx.stroke(); ctx.restore();
+        return;
+      }
+      var sc = pop((now - s.born) / 380);
+      if (sc <= 0) return;
+      var isAct = G.shooter === s && !G.over && !G.busy, bob = 0, pulse = 1;
+      if (isAct && !reduceMotion) { bob = Math.sin(now / 240) * 1.6; pulse = 1 + 0.07 * Math.sin(now / 200); }
+      var R = rr * sc * pulse;
+      ctx.fillStyle = col2; ctx.strokeStyle = C.paper; ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (s.team === 0) ctx.arc(cx, cy + bob, R, 0, Math.PI * 2);
+      else { ctx.moveTo(cx, cy + bob - R * 1.2); ctx.lineTo(cx + R * 1.2, cy + bob); ctx.lineTo(cx, cy + bob + R * 1.2); ctx.lineTo(cx - R * 1.2, cy + bob); ctx.closePath(); }
+      ctx.fill(); ctx.stroke();
+      if (isAct) {
+        ctx.save(); ctx.strokeStyle = col2; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.lineDashOffset = reduceMotion ? 0 : -now / 50;
+        ctx.beginPath(); ctx.arc(cx, cy + bob, rr + 6, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+        var ay = cy + bob - rr - 14 - (reduceMotion ? 0 : Math.abs(Math.sin(now / 280)) * 4);
+        ctx.fillStyle = col2; ctx.beginPath(); ctx.moveTo(cx - 5, ay - 6); ctx.lineTo(cx + 5, ay - 6); ctx.lineTo(cx, ay + 1); ctx.closePath(); ctx.fill();
+      }
+    });
+    if (head) {
+      var hc = shot.team === 0 ? C.c0 : C.c1, hp = 1 + (reduceMotion ? 0 : 0.25 * Math.sin(now / 60));
+      ctx.save(); ctx.shadowColor = hc; ctx.shadowBlur = reduceMotion ? 0 : 14; ctx.fillStyle = hc;
+      ctx.beginPath(); ctx.arc(sx(head.x), sy(head.y), 5.5 * hp, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      ctx.fillStyle = C.paper; ctx.beginPath(); ctx.arc(sx(head.x), sy(head.y), 2, 0, Math.PI * 2); ctx.fill();
+    }
+    fx.forEach(function (e) {
+      var k = (now - e.t0) / e.dur; if (k < 0 || k > 1) return;
+      ctx.save();
+      if (e.kind === 'flash') { ctx.globalAlpha = (1 - k) * 0.85; ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(sx(e.x), sy(e.y), rr * (1 + k * 1.6), 0, Math.PI * 2); ctx.fill(); }
+      else if (e.kind === 'wave') { ctx.globalAlpha = (1 - k) * 0.8; ctx.strokeStyle = e.color; ctx.lineWidth = 3 * (1 - k) + 1; ctx.beginPath(); ctx.arc(sx(e.x), sy(e.y), rr * (0.8 + k * 5), 0, Math.PI * 2); ctx.stroke(); }
+      else { ctx.globalAlpha = 1 - k; ctx.strokeStyle = e.color; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(sx(e.x), sy(e.y), rr * (0.8 + k * 2.6), 0, Math.PI * 2); ctx.stroke(); }
+      ctx.restore();
+    });
+    particles.forEach(function (p) {
+      var k = (now - p.t0) / p.life; if (k < 0 || k >= 1) return;
+      ctx.globalAlpha = 1 - k; ctx.fillStyle = p.color;
+      if (p.conf) { ctx.save(); ctx.translate(sx(p.x), sy(p.y)); ctx.rotate(p.rot + p.vr * (now - p.t0) / 1000); ctx.fillRect(-p.size, -p.size * 0.5, p.size * 2, p.size); ctx.restore(); }
+      else ctx.fillRect(sx(p.x) - p.size / 2, sy(p.y) - p.size / 2, p.size, p.size);
+    });
+    ctx.globalAlpha = 1;
+    if (banner) {
+      var bk = (now - banner.t0) / 1300;
+      if (bk >= 1) banner = null;
+      else {
+        var slide = bk < 0.18 ? (1 - bk / 0.18) : 0, bal = bk > 0.7 ? 1 - (bk - 0.7) / 0.3 : 1;
+        ctx.save(); ctx.globalAlpha = bal; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '700 ' + Math.max(16, Math.round(W / 22)) + 'px "Bai Jamjuree","IBM Plex Sans Thai",sans-serif';
+        var by = H * 0.13 - slide * 30;
+        ctx.lineWidth = 5; ctx.strokeStyle = C.paper; ctx.lineJoin = 'round'; ctx.strokeText(banner.text, W / 2, by);
+        ctx.fillStyle = banner.team === 0 ? C.c0 : C.c1; ctx.fillText(banner.text, W / 2, by);
+        ctx.restore();
+      }
+    }
+  }
+
+  /* ---------- animation loop ---------- */
+  function needsLoop() {
+    if (!G) return false;
+    if ($('#gameView').hidden) return false;
+    if (!reduceMotion) return true;
+    return !!(shot || fx.length || particles.length);
+  }
+  function startLoop() { if (!raf) raf = requestAnimationFrame(tick); }
+  function tick() {
+    T = performance.now();
+    var dt = Math.min(0.05, Math.max(0, (T - (tick.last || T)) / 1000)); tick.last = T;
+    if (shot) {
+      var speed = reduceMotion ? 1e6 : 520;
+      shot.idx += dt * speed;
+      var pts = shot.sim.pts, cur = pts[Math.min(Math.floor(shot.idx), pts.length - 1)];
+      if (cur) {
+        Snd.flightMove(cur.y);
+        if (!reduceMotion && Math.random() < 0.8) burst(cur.x, cur.y, css(shot.team === 0 ? '--blue' : '--red'), 1, 3, 380, 2.5);
+      }
+      shot.sim.hits.forEach(function (h) {
+        var s = G.soldiers[h.id];
+        if (s.alive && h.i <= shot.idx) {
+          s.alive = false; s.deadAt = T;
+          var friendly = s.team === shot.team, sc = css(s.team === 0 ? '--blue' : '--red');
+          if (friendly) shot.friendly++; else shot.kills++;
+          addFx('wave', s.x, s.y, sc, 600); burst(s.x, s.y, sc, 30, 16, 750, 4);
+          addShake(friendly ? 9 : 7); vibrate(friendly ? 60 : 35);
+          Snd.kill(friendly); updateScore();
+        }
+      });
+      if (shot.idx >= pts.length - 1) {
+        shot.idx = pts.length - 1;
+        var last = pts[pts.length - 1];
+        if (shot.sim.end === 'rock') {
+          var rk = css('--rock');
+          G.craters.push({ x: last.x, y: last.y, r: r1(rnd(1.0, 1.3)), born: T });
+          addFx('wave', last.x, last.y, rk, 500); burst(last.x, last.y, rk, 20, 11, 700, 3.5); addShake(4.5); Snd.rock(); vibrate(20);
+        } else { burst(last.x, last.y, css(shot.team === 0 ? '--blue' : '--red'), 8, 6, 450, 3); Snd.fizzle(); }
+        finishShot();
+      }
+    }
+    for (var i = 0; i < particles.length; i++) { var p = particles[i]; if (T < p.t0) continue; p.x += p.vx * dt; p.y += p.vy * dt; p.vy -= p.g * dt; }
+    fx = fx.filter(function (e) { return T - e.t0 < e.dur; });
+    particles = particles.filter(function (p) { return T - p.t0 < p.life; });
+    var busy = shot || fx.length || particles.length || T - shake.t0 < 400;
+    if (busy || T - lastDraw >= 40) { lastDraw = T; draw(); }
+    raf = needsLoop() ? requestAnimationFrame(tick) : 0;
+  }
+
+  /* ---------- in-game controls ---------- */
+  var KEYS = [['x', 'x'], ['y', 'y', 'ode'], ['+', '+'], ['−', '-'], ['×', '*'], ['÷', '/'], ['^', '^'], ['(', '('], [')', ')'], ['.', '.'], [',', ','], ['π', 'pi'],
+    ['sin', 'sin('], ['cos', 'cos('], ['tan', 'tan('], ['√', 'sqrt('], ['abs', 'abs('], ['ln', 'ln('], ['e', 'e'], ['⌫', null]];
+  function buildKeys() {
+    var h = '';
+    KEYS.forEach(function (k, i) { if (k[2] === 'ode' && settings.mode !== 'ode') return; h += '<button type="button" class="key" data-i="' + i + '" aria-label="' + (k[1] === null ? 'ลบหนึ่งตัว' : k[0]) + '">' + k[0] + '</button>'; });
+    $('#keys').innerHTML = h;
+  }
+  function insertText(t) {
+    if (exprEl.disabled) return;
+    var s = exprEl.selectionStart, e = exprEl.selectionEnd;
+    if (s == null) { s = e = exprEl.value.length; }
+    if (t === null) {
+      if (s === e && s > 0) s--;
+      exprEl.value = exprEl.value.slice(0, s) + exprEl.value.slice(e);
+      exprEl.setSelectionRange(s, s);
+    } else {
+      exprEl.value = exprEl.value.slice(0, s) + t + exprEl.value.slice(e);
+      exprEl.setSelectionRange(s + t.length, s + t.length);
+    }
+    onInput();
+  }
+  $('#keys').addEventListener('pointerdown', function (e) { if (e.target.closest('.key')) e.preventDefault(); });
+  $('#keys').addEventListener('click', function (e) {
+    var b = e.target.closest('.key'); if (!b || exprEl.disabled) return;
+    Snd.key(); insertText(KEYS[+b.getAttribute('data-i')][1]);
+  });
+
+  var EXAMPLES = { fn: ['0.25*x', '-0.4*x', '3*sin(x/2)', '0.03*x^2', '2*cos(x)'], ode: ['0.3', 'cos(x/3)', '0.2*x - 1', '-y/8'] };
+  function buildExamples() {
+    var h = '<small>ลองกด:</small>';
+    EXAMPLES[settings.mode].forEach(function (ex, i) { h += '<button type="button" class="chip" data-i="' + i + '">' + ex + '</button>'; });
+    $('#examples').innerHTML = h;
+  }
+  $('#examples').addEventListener('click', function (e) {
+    var b = e.target.closest('.chip'); if (!b || exprEl.disabled) return;
+    Snd.key(); exprEl.value = EXAMPLES[settings.mode][+b.getAttribute('data-i')]; onInput();
+  });
+
+  exprEl.addEventListener('input', function () { Snd.key(); onInput(); });
+  $('#shotForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (exprEl.disabled) return;
+    if (!exprEl.value.trim()) { errEl.textContent = 'พิมพ์สมการก่อนยิง'; errEl.className = 'err'; Snd.err(); return; }
+    fire(exprEl.value);
+  });
+
+  /* ---------- sound buttons ---------- */
+  function syncSound() {
+    document.querySelectorAll('.soundBtn').forEach(function (b) {
+      b.textContent = Snd.isOn() ? 'เสียง เปิด' : 'เสียง ปิด';
+      b.setAttribute('aria-pressed', String(Snd.isOn()));
+    });
+  }
+  document.querySelectorAll('.soundBtn').forEach(function (b) {
+    b.addEventListener('click', function () { Snd.toggle(); syncSound(); Snd.key(); });
+  });
+  syncSound();
+  document.addEventListener('pointerdown', Snd.unlock);
+  document.addEventListener('keydown', Snd.unlock);
+
+  /* ---------- main menu ---------- */
+  function syncMenu() {
+    $('#levelOpt').classList.toggle('dim', settings.opp !== 'bot');
+    $('#diffHint').textContent = settings.opp === 'bot' ? HINTS[settings.level] : 'โหมดสองคนไม่มีบอท ระดับความยากไม่มีผล';
+  }
+  document.querySelectorAll('.seg').forEach(function (seg) {
+    var key = seg.getAttribute('data-key');
+    function sync() {
+      seg.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(String(settings[key]) === b.getAttribute('data-v'))); });
+    }
+    seg.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      var v = b.getAttribute('data-v'); settings[key] = key === 'count' ? +v : v;
+      try { localStorage.setItem('graph-battle-settings', JSON.stringify(settings)); } catch (err) {}
+      Snd.select(); syncMenu();
+      document.querySelectorAll('.seg').forEach(function (s2) { s2.dispatchEvent(new Event('sync')); });
+    });
+    seg.addEventListener('sync', sync); sync();
+  });
+  syncMenu();
+
+  function drawThumbs() {
+    var C = { paper: css('--paper'), grid: css('--grid'), rock: css('--rock'), c0: css('--blue'), c1: css('--red') };
+    document.querySelectorAll('.thumb').forEach(function (cvn) {
+      var id = cvn.getAttribute('data-map'), c = cvn.getContext('2d'), w = cvn.width, h = cvn.height, u = w / 50, i;
+      c.fillStyle = C.paper; c.fillRect(0, 0, w, h);
+      c.strokeStyle = C.grid; c.lineWidth = 1;
+      for (i = -25; i <= 25; i += 5) { c.beginPath(); c.moveTo((i + 25) * u, 0); c.lineTo((i + 25) * u, h); c.stroke(); }
+      for (i = -15; i <= 15; i += 5) { c.beginPath(); c.moveTo(0, (15 - i) * u); c.lineTo(w, (15 - i) * u); c.stroke(); }
+      makeMap(id).forEach(function (o) {
+        c.beginPath(); c.arc((o.x + 25) * u, (15 - o.y) * u, o.r * u, 0, Math.PI * 2);
+        c.fillStyle = C.rock; c.globalAlpha = 0.35; c.fill(); c.globalAlpha = 1; c.strokeStyle = C.rock; c.lineWidth = 2; c.stroke();
+      });
+      [[-19, 8], [-17, -2], [-20, -9]].forEach(function (p) { c.fillStyle = C.c0; c.beginPath(); c.arc((p[0] + 25) * u, (15 - p[1]) * u, 2.2 * u * 0.8, 0, Math.PI * 2); c.fill(); });
+      [[19, 7], [17, -3], [20, -8]].forEach(function (p) {
+        var x = (p[0] + 25) * u, y = (15 - p[1]) * u, r = 2.2 * u;
+        c.fillStyle = C.c1; c.beginPath(); c.moveTo(x, y - r); c.lineTo(x + r, y); c.lineTo(x, y + r); c.lineTo(x - r, y); c.closePath(); c.fill();
+      });
+    });
+  }
+  function showGame() {
+    $('#menuView').hidden = true; $('#gameView').hidden = false;
+    window.scrollTo({ top: 0 });
+    resize(); newGame();
+  }
+  function showMenu() {
+    gid++; shot = null; Snd.flightStop();
+    $('#overlay').hidden = true;
+    $('#gameView').hidden = true; $('#menuView').hidden = false;
+    window.scrollTo({ top: 0 });
+    drawThumbs();
+  }
+  $('#startBtn').addEventListener('click', function () { Snd.start(); showGame(); });
+  $('#menuBtn').addEventListener('click', function () { Snd.select(); showMenu(); });
+  $('#menuBtn2').addEventListener('click', showMenu);
+  $('#newBtn').addEventListener('click', newGame);
+  $('#againBtn').addEventListener('click', newGame);
+  $('#helpMenu').innerHTML = $('#helpGame').innerHTML;
+
+  window.addEventListener('resize', resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(board);
+  function redrawAll() { draw(); drawThumbs(); }
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redrawAll);
+  new MutationObserver(redrawAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  resize(); drawThumbs();
+})();
+</script>
+</body>
+</html>
